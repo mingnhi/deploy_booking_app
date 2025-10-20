@@ -19,21 +19,24 @@ pipeline {
         }
 
         stage('Backend - Install & Build') {
-            steps {
-                dir('backend') {
-                    echo 'Installing dependencies for NestJS...'
-                    sh '''
-                        # Kiểm tra NodeJS
-                        node -v || curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | sudo -E bash -
-                        sudo apt-get install -y nodejs
+    steps {
+        dir('backend') {
+            echo 'Installing dependencies for NestJS...'
+            sh '''
+                # Download NodeJS binary
+                curl -o node-v18.tar.xz https://nodejs.org/dist/v18.20.3/node-v18.20.3-linux-x64.tar.xz
+                tar -xf node-v18.tar.xz
+                export PATH="$PWD/node-v18.20.3-linux-x64/bin:$PATH"
 
-                        npm install
-                        npm run build
-                    '''
-                }
-            }
+                node -v
+                npm -v
+
+                npm install
+                npm run build
+            '''
         }
-
+    }
+}
         stage('Frontend - Install & Build') {
             steps {
                 dir('frontend') {
