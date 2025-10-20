@@ -2,16 +2,18 @@ pipeline {
     agent any
 
     environment {
-        // NodeJS cho backend
+        // NodeJS version cho backend
         NODE_VERSION = '18'
-        // Flutter SDK path (đang cài ở /var/jenkins_home/flutter)
-        FLUTTER_HOME = '/var/jenkins_home/flutter/bin'
+        // Flutter SDK path (trong Jenkins Ubuntu server của bạn)
+        FLUTTER_HOME = '/var/lib/jenkins/flutter/bin'
+        PATH = "$PATH:$FLUTTER_HOME:/usr/local/bin"
     }
 
     stages {
+
         stage('Checkout') {
             steps {
-                echo 'Cloning source code...'
+                echo ' Cloning source code...'
                 git branch: 'main', url: 'https://github.com/mingnhi/deploy_booking_app.git'
             }
         }
@@ -21,6 +23,10 @@ pipeline {
                 dir('backend') {
                     echo 'Installing dependencies for NestJS...'
                     sh '''
+                        # Kiểm tra NodeJS
+                        node -v || curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | sudo -E bash -
+                        sudo apt-get install -y nodejs
+
                         npm install
                         npm run build
                     '''
@@ -34,12 +40,14 @@ pipeline {
                     echo 'Building Flutter web project...'
                     sh '''
                         # Fix lỗi Git "dubious ownership" (do Flutter SDK là repo Git)
-                        git config --global --add safe.directory /usr/local/flutter || true
-                        git config --global --add safe.directory /var/jenkins_home/flutter || true
-                        
-                        # Thêm Flutter vào PATH
+                        git config --global --add safe.directory /var/lib/jenkins/flutter || true
+
+                        # Export lại PATH để Flutter hoạt động
                         export PATH="$PATH:${FLUTTER_HOME}"
-                        
+
+                        # Kiểm tra Flutter version
+                        flutter --version
+
                         # Build Flutter web
                         flutter clean
                         flutter pub get
@@ -62,17 +70,17 @@ pipeline {
                 expression { return false }  // Tạm tắt deploy
             }
             steps {
-                echo 'Deploying application...'
+                echo ' Deploying application...'
             }
         }
     }
 
     post {
         success {
-            echo 'Build completed successfully!'
+            echo '✅ Build completed successfully!'
         }
         failure {
-            echo 'Build failed!'
+            echo ' Build failed! Check logs for details.'
         }
     }
 }
