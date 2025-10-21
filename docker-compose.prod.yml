@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  backend:
+    container_name: booking_backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # nếu NestJS có dùng .env file
+      - MONGO_URI=${MONGODB_URI}
+    networks:
+      - booking_network
+
+  frontend:
+    container_name: booking_frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - booking_network
+
+networks:
+  booking_network:
+    driver: bridge
