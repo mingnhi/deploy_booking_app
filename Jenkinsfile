@@ -2,88 +2,100 @@ pipeline {
     agent any
 
     environment {
-        // NodeJS version cho backend
-        NODE_VERSION = '18'
-        // Flutter SDK path (trong Jenkins Ubuntu server của bạn)
-        FLUTTER_HOME = '/var/lib/jenkins/flutter/bin'
-        PATH = "$PATH:$FLUTTER_HOME:/usr/local/bin"
+        REGISTRY = "docker.io/${DOCKER_USERNAME}"
+        IMAGE_NAME = "booking-backend"
+        SERVER_HOST = "171.225.184.65"
+        SERVER_USER = "root"
     }
 
     stages {
-
         stage('Checkout') {
             steps {
-                echo ' Cloning source code...'
-                git branch: 'main', url: 'https://github.com/mingnhi/deploy_booking_app.git'
+                checkout([$class: 'GitSCM',
+                  branches: [[name: '*/main']],
+                  userRemoteConfigs: [[
+                    url: 'https://github.com/mingnhi/deploy_booking_app.git',
+                    credentialsId: 'github-pat'
+                  ]]
+                ])
             }
         }
 
-        stage('Backend - Install & Build') {
-    steps {
-        dir('backend') {
-            echo 'Installing dependencies for NestJS...'
-            sh '''
-                # Download NodeJS binary
-                curl -o node-v18.tar.xz https://nodejs.org/dist/v18.20.3/node-v18.20.3-linux-x64.tar.xz
-                tar -xf node-v18.tar.xz
-                export PATH="$PWD/node-v18.20.3-linux-x64/bin:$PATH"
-
-                node -v
-                npm -v
-
-                npm install
-                npm run build
-            '''
+        stage('Build Backend Image') {
+            steps {
+                dir('backend') {
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-cred',
+                        usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh '''
+                            echo "Building backend image..."
+                            docker build -t docker.io/$DOCKER_USER/booking-backend:latest .
+                        '''
+                    }
+                }
+            }
         }
-    }
-}
-        stage('Frontend - Install & Build') {
+
+        stage('Build Frontend Image') {
             steps {
                 dir('frontend') {
-                    echo 'Building Flutter web project...'
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-cred',
+                        usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh '''
+                            echo "Building frontend image..."
+                            docker build -t docker.io/$DOCKER_USER/booking-frontend:latest .
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-cred',
+                    usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh '''
-                        # Fix lỗi Git "dubious ownership" (do Flutter SDK là repo Git)
-                        git config --global --add safe.directory /var/lib/jenkins/flutter || true
-
-                        # Export lại PATH để Flutter hoạt động
-                        export PATH="$PATH:${FLUTTER_HOME}"
-
-                        # Kiểm tra Flutter version
-                        flutter --version
-
-                        # Build Flutter web
-                        flutter clean
-                        flutter pub get
-                        flutter build web
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                        docker push docker.io/$DOCKER_USER/booking-backend:latest
+                        docker push docker.io/$DOCKER_USER/booking-frontend:latest
                     '''
                 }
             }
         }
 
-        stage('Archive Artifacts') {
+        stage('Deploy to Server') {
             steps {
-                echo 'Archiving build outputs...'
-                archiveArtifacts artifacts: 'backend/dist/**', fingerprint: true
-                archiveArtifacts artifacts: 'frontend/build/web/**', fingerprint: true
-            }
-        }
+                withCredentials([
+                    usernamePassword(credentialsId: 'dockerhub-cred',
+                        usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS'),
+                    string(credentialsId: 'db-conn', variable: 'DB_CONN'),
+                    file(credentialsId: 'docker-compose-file', variable: 'DOCKER_COMPOSE_PATH')
+                ]) {
+                    sshagent (credentials: ['server-ssh-key']) {
+                        sh '''
+                            scp -o StrictHostKeyChecking=no $DOCKER_COMPOSE_PATH $SERVER_USER@$SERVER_HOST:~/project/docker-compose.yml
 
-        stage('Deploy (Optional)') {
-            when {
-                expression { return false }  // Tạm tắt deploy
-            }
-            steps {
-                echo ' Deploying application...'
+                            ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_HOST "
+                                cd ~/project && \
+                                echo \\"DB_CONNECTION_STRING=$DB_CONN\\" > .env && \
+                                echo \\"$DOCKER_PASS\\" | docker login -u $DOCKER_USER --password-stdin && \
+                                docker compose --env-file .env pull && \
+                                docker compose --env-file .env down && \
+                                docker compose --env-file .env up -d && \
+                                docker image prune -f
+                            "
+                        '''
+                    }
+                }
             }
         }
     }
 
     post {
         success {
-            echo '✅ Build completed successfully!'
+            echo '✅ CI/CD pipeline completed successfully!'
         }
         failure {
-            echo ' Build failed! Check logs for details.'
+            echo '❌ Build failed. Check logs for details.'
         }
     }
 }
