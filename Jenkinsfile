@@ -5,7 +5,7 @@ pipeline {
         REGISTRY = "docker.io/${DOCKER_USERNAME}"
         IMAGE_NAME = "booking-backend"
         SERVER_HOST = "171.225.184.65"
-        SERVER_USER = "minhnhi"
+        SERVER_USER = "jenkins"
     }
 
     stages {
