@@ -64,38 +64,32 @@ pipeline {
 
         stage('Deploy to Server') {
             steps {
+                sshagent (credentials: ['server-ssh-key']) {
                 withCredentials([
-                    usernamePassword(credentialsId: 'dockerhub-cred',
-                        usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS'),
+                    usernamePassword(credentialsId: 'dockerhub-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS'),
                     string(credentialsId: 'db-conn', variable: 'DB_CONN'),
                     file(credentialsId: 'docker-compose-file', variable: 'DOCKER_COMPOSE_PATH')
                 ]) {
-                    sshagent (credentials: ['server-ssh-key']) {
-                        sh '''
-                            scp -o StrictHostKeyChecking=no $DOCKER_COMPOSE_PATH $SERVER_USER@$SERVER_HOST:~/project/docker-compose.yml
-
-                            ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_HOST "
-                                cd ~/project && \
-                                echo \\"DB_CONNECTION_STRING=$DB_CONN\\" > .env && \
-                                echo \\"$DOCKER_PASS\\" | docker login -u $DOCKER_USER --password-stdin && \
-                                docker compose --env-file .env pull && \
-                                docker compose --env-file .env down && \
-                                docker compose --env-file .env up -d && \
-                                docker image prune -f
-                            "
-                        '''
-                    }
+                    sh '''
+                    echo "### workspace $(pwd)"
+                    echo "### compose file path: $DOCKER_COMPOSE_PATH"
+                    ls -l $DOCKER_COMPOSE_PATH || echo "compose file missing"
+                    echo "### testing ssh connection"
+                    ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_HOST "echo connected"
+                    '''
                 }
             }
         }
     }
 
+    }
+
     post {
         success {
-            echo '✅ CI/CD pipeline completed successfully!'
+            echo ' CI/CD pipeline completed successfully!'
         }
         failure {
-            echo '❌ Build failed. Check logs for details.'
+            echo ' Build failed. Check logs for details.'
         }
     }
 }
