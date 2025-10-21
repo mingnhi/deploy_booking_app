@@ -4,8 +4,9 @@ pipeline {
     environment {
         REGISTRY = "docker.io/${DOCKER_USERNAME}"
         IMAGE_NAME = "booking-backend"
-        SERVER_HOST = "171.225.184.65"
+        SERVER_HOST = "127.0.0.1"
         SERVER_USER = "jenkins"
+        SERVER_PORT = "2222"
     }
 
     stages {
